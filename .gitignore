@@ -1,0 +1,22 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Model files
+models/
+models/*.h5
+models/*.keras
+
+# Workspace files
+*.code-workspace
+
+# Virtual environment
+.venv/
+
+# Dataset folder
+massachusetts-roads-dataset/
