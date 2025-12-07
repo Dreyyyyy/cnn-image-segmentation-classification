@@ -23,7 +23,7 @@ This project explores semantic segmentation of aerial imagery—specifically, de
 4. **Model Architectures**
    - **Baseline encoder–decoder CNN**: Simple encoder-decoder architecture.
    - **U-Net (Original)**: U-Net with skip connections.
-   - **U-Net (Improved)**: Enhanced U-Net with BatchNormalization, BCE+Dice loss, and data augmentation.
+   - **U-Net (Improved)**: Enhanced U-Net with BatchNormalization, BCE+Dice loss, and data augmentation (adapted from [Kaggle reference](https://www.kaggle.com/code/quangdamvinh/roads-segmentation)).
    - **Fully Convolutional Network (FCN)**: Multi-scale feature extraction.
    - **Paper's Patch-Based CNN**: Exact implementation from the Massachusetts Roads Dataset paper (Section 6.4.1).
 5. **Training**
@@ -115,7 +115,6 @@ The improved U-Net implementation includes:
 - **Best for**: Limited datasets (1k images), high-quality requirements
 
 ## Lessons Learned
-
 1. **BatchNormalization is crucial**: Stabilizes training and improves convergence
 2. **Loss function matters**: BCE+Dice is much better than BCE alone for segmentation
 3. **Data quality > quantity**: Filtering low-quality images is essential
@@ -123,7 +122,6 @@ The improved U-Net implementation includes:
 5. **Proper data splits**: Using predefined splits avoids data leakage
 
 ## Possible Future Improvements
-
 - Experiment with different patch sizes and strides for the paper's approach
 - Try ensemble methods combining multiple models
 - Implement test-time augmentation for better predictions
@@ -132,5 +130,6 @@ The improved U-Net implementation includes:
 
 ## Acknowledgments
 
-- Massachusetts Roads dataset.
-- TensorFlow/Keras community resources and tutorials.
+- **Massachusetts Roads dataset** - The aerial imagery dataset used for training and evaluation.
+- **Kaggle Notebook Reference** - The improved U-Net implementation was adapted from the excellent work by [quangdamvinh](https://www.kaggle.com/code/quangdamvinh/roads-segmentation) on Kaggle, which provided valuable insights into architecture design, loss functions, and data preprocessing techniques.
+- **TensorFlow/Keras community** - Resources and tutorials that helped shape this project.
