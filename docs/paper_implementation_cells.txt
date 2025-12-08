@@ -1,0 +1,457 @@
+"""
+ADD THESE CELLS TO YOUR NOTEBOOK TO IMPLEMENT THE PAPER'S APPROACH
+Copy each section below as a new cell in your Jupyter notebook
+"""
+
+# ==============================================================================
+# CELL 1: Import the paper implementation module
+# ==============================================================================
+"""
+# Paper's Patch-Based Implementation
+
+This section implements the exact approach from the paper:
+- 64×64 input patches
+- 16×16 center prediction
+- Patch-based training
+"""
+
+from paper_implementation import *
+
+# Print information about the paper's approach
+print_paper_architecture_info()
+
+
+# ==============================================================================
+# CELL 2: Update Configuration
+# ==============================================================================
+
+# Add paper-specific configuration
+CONFIG.update({
+    'USE_PATCHES': True,
+    'PATCH_SIZE': 64,
+    'CENTER_SIZE': 16,
+    'STRIDE': 32,  # For extraction (more overlap = better results but slower)
+    
+    # Paper's training parameters
+    'PAPER_BATCH_SIZE': 128,
+    'PAPER_INITIAL_LR': 0.01,
+    'PAPER_LR_DECAY': 0.95,
+    'PAPER_DECAY_EVERY': 2**20,
+})
+
+print("\n✅ Configuration updated for patch-based training")
+print(f"Patch size: {CONFIG['PATCH_SIZE']}×{CONFIG['PATCH_SIZE']}")
+print(f"Center prediction size: {CONFIG['CENTER_SIZE']}×{CONFIG['CENTER_SIZE']}")
+print(f"Stride: {CONFIG['STRIDE']}")
+
+
+# ==============================================================================
+# CELL 3: Extract Patches from Your Dataset
+# ==============================================================================
+
+# Assuming you already loaded images and masks
+# images shape: (1108, 256, 256, 3)
+# masks shape: (1108, 256, 256)
+
+print("Current dataset:")
+print(f"  Images: {images.shape}")
+print(f"  Masks: {masks.shape}")
+
+# Extract patches (this will take a few minutes)
+patches, labels = extract_patches_from_dataset(
+    images, 
+    masks,
+    patch_size=CONFIG['PATCH_SIZE'],
+    center_size=CONFIG['CENTER_SIZE'],
+    stride=CONFIG['STRIDE'],
+    max_patches_per_image=None  # Use all patches
+)
+
+# Normalize to [0, 1]
+patches_norm = normalize_patches(patches)
+labels_norm = normalize_labels(labels)
+
+print(f"\n📦 Patch dataset ready:")
+print(f"   Training patches: {len(patches_norm):,}")
+print(f"   Patch shape: {patches_norm.shape}")
+print(f"   Label shape: {labels_norm.shape}")
+print(f"   Memory usage: ~{patches_norm.nbytes / 1e9:.2f} GB")
+
+
+# ==============================================================================
+# CELL 4: Split into Train/Val
+# ==============================================================================
+
+from sklearn.model_selection import train_test_split
+
+# Split patches into train/validation
+X_train, X_val, y_train, y_val = train_test_split(
+    patches_norm, 
+    labels_norm,
+    test_size=0.2,
+    random_state=42
+)
+
+print(f"\n✅ Dataset split:")
+print(f"   Training: {len(X_train):,} patches")
+print(f"   Validation: {len(X_val):,} patches")
+
+
+# ==============================================================================
+# CELL 5: Visualize Patches
+# ==============================================================================
+
+import matplotlib.pyplot as plt
+
+# Visualize some patches and their center labels
+fig, axes = plt.subplots(4, 6, figsize=(15, 10))
+
+for i in range(4):
+    for j in range(3):
+        idx = np.random.randint(len(X_train))
+        
+        # Show patch
+        axes[i, j*2].imshow(X_train[idx])
+        axes[i, j*2].set_title(f'Patch {idx}')
+        axes[i, j*2].axis('off')
+        
+        # Show center label (16×16)
+        label = y_train[idx].reshape(16, 16)
+        axes[i, j*2+1].imshow(label, cmap='gray')
+        axes[i, j*2+1].set_title('Center Label')
+        axes[i, j*2+1].axis('off')
+
+plt.suptitle('Sample 64×64 Patches and their 16×16 Center Labels', fontsize=16)
+plt.tight_layout()
+plt.savefig(CONFIG['RESULTS_DIR'] + 'patch_samples.png', dpi=150, bbox_inches='tight')
+plt.show()
+
+
+# ==============================================================================
+# CELL 6: Build Paper's Model
+# ==============================================================================
+
+# Build the model exactly as described in the paper
+paper_model = build_paper_cnn(
+    input_shape=(CONFIG['PATCH_SIZE'], CONFIG['PATCH_SIZE'], 3),
+    output_units=CONFIG['CENTER_SIZE'] * CONFIG['CENTER_SIZE']
+)
+
+print("=" * 70)
+print("PAPER'S CNN ARCHITECTURE")
+print("=" * 70)
+paper_model.summary()
+
+print(f"\n📊 Model Statistics:")
+print(f"   Total parameters: {paper_model.count_params():,}")
+print(f"   Trainable parameters: {sum([tf.size(w).numpy() for w in paper_model.trainable_weights]):,}")
+
+
+# ==============================================================================
+# CELL 7: Compile Model with Paper's Settings
+# ==============================================================================
+
+# Compile with binary cross-entropy (as paper uses for pixel-wise classification)
+paper_model.compile(
+    optimizer=keras.optimizers.SGD(
+        learning_rate=CONFIG['PAPER_INITIAL_LR'],
+        momentum=0.9  # Standard SGD with momentum
+    ),
+    loss='binary_crossentropy',
+    metrics=[
+        'accuracy',
+        keras.metrics.BinaryAccuracy(name='binary_acc'),
+        keras.metrics.Precision(name='precision'),
+        keras.metrics.Recall(name='recall')
+    ]
+)
+
+print("✅ Model compiled with:")
+print(f"   Optimizer: SGD with momentum=0.9")
+print(f"   Initial LR: {CONFIG['PAPER_INITIAL_LR']}")
+print(f"   Loss: binary_crossentropy")
+
+
+# ==============================================================================
+# CELL 8: Setup Callbacks
+# ==============================================================================
+
+# Create callbacks
+lr_schedule = PaperLRSchedule(
+    initial_lr=CONFIG['PAPER_INITIAL_LR'],
+    decay_rate=CONFIG['PAPER_LR_DECAY'],
+    decay_steps=CONFIG['PAPER_DECAY_EVERY'],
+    batch_size=CONFIG['PAPER_BATCH_SIZE']
+)
+
+checkpoint = keras.callbacks.ModelCheckpoint(
+    CONFIG['SAVE_DIR'] + 'paper_cnn_best.keras',
+    monitor='val_loss',
+    save_best_only=True,
+    verbose=1
+)
+
+early_stop = keras.callbacks.EarlyStopping(
+    monitor='val_loss',
+    patience=5,
+    restore_best_weights=True,
+    verbose=1
+)
+
+callbacks = [lr_schedule, checkpoint, early_stop]
+
+print("✅ Callbacks configured:")
+print("   - Paper's LR schedule (×0.95 every 2^20 samples)")
+print("   - Model checkpoint (best validation loss)")
+print("   - Early stopping (patience=5)")
+
+
+# ==============================================================================
+# CELL 9: Train the Model
+# ==============================================================================
+
+print("\n" + "=" * 70)
+print("TRAINING PAPER'S CNN")
+print("=" * 70)
+
+# Calculate epochs based on paper's total samples
+# Paper trains for 2^25 samples (~33M)
+# With 128 batch size: 2^25 / 128 ≈ 262,144 batches
+# If we have ~100k patches per epoch: ~330 epochs
+
+# For practical purposes, let's train for a reasonable number of epochs
+TRAIN_EPOCHS = 20  # Adjust based on your dataset size and time
+
+history = paper_model.fit(
+    X_train, y_train,
+    batch_size=CONFIG['PAPER_BATCH_SIZE'],
+    epochs=TRAIN_EPOCHS,
+    validation_data=(X_val, y_val),
+    callbacks=callbacks,
+    verbose=1
+)
+
+print("\n✅ Training complete!")
+
+
+# ==============================================================================
+# CELL 10: Plot Training History
+# ==============================================================================
+
+fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+
+# Loss
+axes[0].plot(history.history['loss'], label='Train Loss', linewidth=2)
+axes[0].plot(history.history['val_loss'], label='Val Loss', linewidth=2)
+axes[0].set_xlabel('Epoch', fontsize=12)
+axes[0].set_ylabel('Binary Cross-Entropy Loss', fontsize=12)
+axes[0].set_title('Training Loss', fontsize=14)
+axes[0].legend()
+axes[0].grid(True, alpha=0.3)
+
+# Accuracy
+axes[1].plot(history.history['binary_acc'], label='Train Acc', linewidth=2)
+axes[1].plot(history.history['val_binary_acc'], label='Val Acc', linewidth=2)
+axes[1].set_xlabel('Epoch', fontsize=12)
+axes[1].set_ylabel('Accuracy', fontsize=12)
+axes[1].set_title('Training Accuracy', fontsize=14)
+axes[1].legend()
+axes[1].grid(True, alpha=0.3)
+
+plt.suptitle("Paper's CNN Training Progress", fontsize=16)
+plt.tight_layout()
+plt.savefig(CONFIG['RESULTS_DIR'] + 'paper_training.png', dpi=150, bbox_inches='tight')
+plt.show()
+
+
+# ==============================================================================
+# CELL 11: Predict on Full Images
+# ==============================================================================
+
+# Select a few test images to predict
+# If you have a separate test set, use that; otherwise use validation images
+test_images = images[:10]  # First 10 images for demo
+test_masks = masks[:10]
+
+# Normalize test images
+test_images_norm = test_images / 255.0
+
+# Predict using sliding window
+predictions = predict_dataset(
+    paper_model,
+    test_images_norm,
+    patch_size=CONFIG['PATCH_SIZE'],
+    center_size=CONFIG['CENTER_SIZE'],
+    stride=CONFIG['STRIDE'],  # Smaller stride = better quality but slower
+    batch_size=64
+)
+
+print(f"\n✅ Predictions complete!")
+print(f"   Predictions shape: {predictions.shape}")
+
+
+# ==============================================================================
+# CELL 12: Visualize Results
+# ==============================================================================
+
+# Visualize predictions
+fig, axes = plt.subplots(5, 3, figsize=(12, 18))
+
+for i in range(5):
+    # Original image
+    axes[i, 0].imshow(test_images[i].astype(np.uint8))
+    axes[i, 0].set_title(f'Original Image {i+1}')
+    axes[i, 0].axis('off')
+    
+    # Ground truth
+    axes[i, 1].imshow(test_masks[i], cmap='gray')
+    axes[i, 1].set_title('Ground Truth')
+    axes[i, 1].axis('off')
+    
+    # Prediction
+    axes[i, 2].imshow(predictions[i], cmap='gray', vmin=0, vmax=1)
+    axes[i, 2].set_title('Prediction')
+    axes[i, 2].axis('off')
+
+plt.suptitle("Paper's CNN Predictions on Full Images", fontsize=16)
+plt.tight_layout()
+plt.savefig(CONFIG['RESULTS_DIR'] + 'paper_predictions.png', dpi=150, bbox_inches='tight')
+plt.show()
+
+
+# ==============================================================================
+# CELL 13: Calculate Metrics on Full Images
+# ==============================================================================
+
+from sklearn.metrics import precision_recall_curve, f1_score, jaccard_score
+
+def calculate_metrics(y_true, y_pred, threshold=0.5):
+    """Calculate metrics for binary segmentation"""
+    y_true_flat = y_true.flatten()
+    y_pred_flat = y_pred.flatten()
+    
+    # Binarize predictions
+    y_pred_binary = (y_pred_flat > threshold).astype(float)
+    
+    # Normalize ground truth
+    y_true_binary = (y_true_flat > 127).astype(float)
+    
+    # Calculate metrics
+    iou = jaccard_score(y_true_binary, y_pred_binary)
+    f1 = f1_score(y_true_binary, y_pred_binary)
+    
+    # Precision-recall curve
+    precision, recall, thresholds = precision_recall_curve(y_true_binary, y_pred_flat)
+    
+    # Find precision-recall breakeven point (where precision ≈ recall)
+    idx = np.argmin(np.abs(precision - recall))
+    breakeven = (precision[idx] + recall[idx]) / 2
+    
+    return {
+        'iou': iou,
+        'f1': f1,
+        'precision': precision[idx],
+        'recall': recall[idx],
+        'breakeven': breakeven
+    }
+
+# Calculate metrics
+metrics = calculate_metrics(test_masks, predictions)
+
+print("\n" + "=" * 70)
+print("PAPER'S CNN PERFORMANCE")
+print("=" * 70)
+print(f"IoU (Jaccard Index): {metrics['iou']:.4f}")
+print(f"F1 Score (Dice): {metrics['f1']:.4f}")
+print(f"Precision: {metrics['precision']:.4f}")
+print(f"Recall: {metrics['recall']:.4f}")
+print(f"Precision-Recall Breakeven: {metrics['breakeven']:.4f}")
+print("=" * 70)
+print(f"\n📄 Paper's reported breakeven: 0.8873")
+print(f"   Your result: {metrics['breakeven']:.4f}")
+print(f"   Difference: {metrics['breakeven'] - 0.8873:.4f}")
+
+
+# ==============================================================================
+# CELL 14: Compare with Your Original Results
+# ==============================================================================
+
+# Load your previous results
+comparison_df = pd.DataFrame({
+    'Model': [
+        'Baseline_CNN (yours)',
+        'U-Net (yours)', 
+        'FCN (yours)',
+        'Paper CNN (patch-based)'
+    ],
+    'IoU': [
+        0.2960,  # Your baseline
+        0.2893,  # Your U-Net
+        0.0321,  # Your FCN
+        metrics['iou']
+    ],
+    'F1/Dice': [
+        0.4565,
+        0.4485,
+        0.0622,
+        metrics['f1']
+    ],
+    'PR Breakeven': [
+        None,
+        None,
+        None,
+        metrics['breakeven']
+    ]
+})
+
+print("\n" + "=" * 70)
+print("MODEL COMPARISON")
+print("=" * 70)
+print(comparison_df.to_string(index=False))
+print("=" * 70)
+
+# Save comparison
+comparison_df.to_csv(CONFIG['RESULTS_DIR'] + 'paper_comparison.csv', index=False)
+print(f"\n✅ Results saved to {CONFIG['RESULTS_DIR']}paper_comparison.csv")
+
+
+# ==============================================================================
+# NOTES ON FURTHER IMPROVEMENTS
+# ==============================================================================
+
+"""
+To get even closer to the paper's results:
+
+1. **More Training Data**: 
+   - Use smaller stride (e.g., 16) to extract more overlapping patches
+   - This creates 4x more training data
+
+2. **Data Augmentation**:
+   - Rotate patches (90°, 180°, 270°)
+   - Flip horizontally/vertically
+   - This multiplies dataset by 8x
+
+3. **Train Longer**:
+   - Paper trains for 2^25 samples (~33M)
+   - With augmentation, you can reach this
+
+4. **CRF Post-processing**:
+   - Paper gets +0.003 improvement with CRF
+   - Use pydensecrf library
+
+5. **Post-processing Network**:
+   - Train a second network on outputs of first
+   - Paper's best result: 0.9006
+
+6. **Full Dataset**:
+   - Paper uses all 1108 training images
+   - Extract patches from all images
+
+7. **Thicker Road Lines**:
+   - Paper uses 7-pixel thickness for road centerlines
+   - Check if your masks match this
+
+8. **Hard Binary Labels**:
+   - Paper uses binary labels (0 or 1), not soft labels
+   - Ensure your masks are binary
+"""
