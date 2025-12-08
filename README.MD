@@ -1,6 +1,6 @@
 # CNN Image Segmentation & Classification
 
-This project explores semantic segmentation of aerial imagery—specifically, detecting road networks—using multiple convolutional neural network architectures implemented in TensorFlow/Keras. The project includes both traditional full-image segmentation approaches and a patch-based CNN implementation based on the Massachusetts Roads Dataset paper.
+This project explores semantic segmentation of aerial imagery—specifically, detecting road networks—using multiple convolutional neural network architectures implemented in TensorFlow/Keras. The project includes both traditional full-image segmentation approaches and a patch-based CNN implementation based on the methodology from Mnih (2013).
 
 ## Project Overview
 
@@ -25,7 +25,7 @@ This project explores semantic segmentation of aerial imagery—specifically, de
    - **U-Net (Original)**: U-Net with skip connections.
    - **U-Net (Improved)**: Enhanced U-Net with BatchNormalization, BCE+Dice loss, and data augmentation (adapted from [Kaggle reference](https://www.kaggle.com/code/quangdamvinh/roads-segmentation)).
    - **Fully Convolutional Network (FCN)**: Multi-scale feature extraction.
-   - **Paper's Patch-Based CNN**: Exact implementation from the Massachusetts Roads Dataset paper (Section 6.4.1).
+   - **Paper's Patch-Based CNN**: Exact implementation from Mnih (2013) thesis (Section 6.4.1).
 5. **Training**
    - Train/validation split: 80/20 (original models) or predefined splits (improved models).
    - Early stopping, model checkpoints, and learning-rate scheduling.
@@ -130,6 +130,6 @@ The improved U-Net implementation includes:
 
 ## Acknowledgments
 
-- **Massachusetts Roads dataset** - The aerial imagery dataset used for training and evaluation.
+- **Mnih, V. (2013)** - This project uses the Massachusetts Roads dataset and implements the patch-based CNN methodology from the doctoral thesis "Machine Learning for Aerial Image Labeling" by Volodymyr Mnih (University of Toronto, 2013). The thesis introduced the dataset and the patch-based approach for road segmentation that forms the foundation of this work. [Semantic Scholar](https://api.semanticscholar.org/CorpusID:114890196)
 - **Kaggle Notebook Reference** - The improved U-Net implementation was adapted from the excellent work by [quangdamvinh](https://www.kaggle.com/code/quangdamvinh/roads-segmentation) on Kaggle, which provided valuable insights into architecture design, loss functions, and data preprocessing techniques.
 - **TensorFlow/Keras community** - Resources and tutorials that helped shape this project.
